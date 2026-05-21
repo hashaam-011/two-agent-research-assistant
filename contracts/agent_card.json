@@ -3,10 +3,15 @@
   "description": "Performs web search and returns structured results",
   "url": "http://localhost:8002",
   "version": "1.0.0",
-  "capabilities": ["text"],
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
   "skills": [
     {
       "id": "web_search",
+      "name": "Web Search",
       "description": "Search the web for a given query and return top results"
     }
   ]

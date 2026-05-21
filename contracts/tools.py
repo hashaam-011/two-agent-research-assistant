@@ -31,4 +31,4 @@ def web_search(query: str) -> WebSearchResponse:
             ]
         }
     """
-    ...
+    raise NotImplementedError("This is a contract stub — import and call the real MCP tool instead.")

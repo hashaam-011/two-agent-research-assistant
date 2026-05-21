@@ -1,12 +1,14 @@
 """STATE_DELTA payload schema — used by Planner Agent and consumed by the frontend Activity panel."""
 
-from typing import Literal, TypedDict
+from typing import Literal, Optional, TypedDict
 
 
 class ToolCallState(TypedDict):
+    id: str
     name: str
-    status: Literal["running", "done"]
+    status: Literal["running", "done", "error"]
     query: str
+    resultsCount: Optional[int]
 
 
 class StateDelta(TypedDict):
@@ -21,6 +23,12 @@ class StateDelta(TypedDict):
 #   "active_agent": "search",
 #   "step": "searching...",
 #   "tool_calls": [
-#     { "name": "web_search", "status": "running", "query": "AI agent protocols 2025" }
+#     {
+#       "id": "call_abc123",
+#       "name": "web_search",
+#       "status": "running",
+#       "query": "AI agent protocols 2025",
+#       "resultsCount": null
+#     }
 #   ]
 # }
