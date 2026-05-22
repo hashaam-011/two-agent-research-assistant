@@ -111,8 +111,11 @@ async def receive_task(task: TaskRequest):
             if result.isError:
                 return JSONResponse(
                     status_code=502,
-                    content={"task_id": task.task_id, "status": "error",
-                             "message": f"MCP tool error: {result.content}"},
+                    content={
+                        "task_id": task.task_id,
+                        "status": "error",
+                        "message": f"MCP tool error: {result.content}",
+                    },
                 )
             search_results = result.data if result.data else {}
     except Exception as e:
