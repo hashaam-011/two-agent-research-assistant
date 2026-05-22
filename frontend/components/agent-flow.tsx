@@ -3,6 +3,7 @@
 import { Wrench, User2, Search } from "lucide-react";
 import { useAppState } from "@/components/app-state";
 import { cn } from "@/lib/utils";
+import { AgentName } from "@/lib/agui-types";
 
 type Node = {
   key: "planner" | "search" | "tool";
@@ -63,27 +64,27 @@ export function AgentFlow() {
   const toolUsed = toolCalls.length > 0;
   const isStreaming = status === "streaming";
   const isActive = (k: Node["key"]) => {
-    if (k === "planner") return activeAgent === "planner";
-    if (k === "search") return activeAgent === "search";
+    if (k === "planner") return activeAgent === AgentName.Planner;
+    if (k === "search") return activeAgent === AgentName.Search;
     // Tool card stays active as long as there are tool calls in the current run
     // (running OR done) so it doesn't flash off the moment TOOL_CALL_END fires.
-    return toolRunning || (toolUsed && activeAgent !== "idle");
+    return toolRunning || (toolUsed && activeAgent !== AgentName.Idle);
   };
 
   // Only show the subline during an active run — no "ready" label at rest.
   const subline =
-    isStreaming || activeAgent !== "idle"
-      ? activeAgent === "idle"
-        ? "starting…"
-        : `${activeAgent} · ${step || (activeAgent === "planner" ? "thinking…" : "searching…")}`
+    isStreaming || activeAgent !== AgentName.Idle
+      ? activeAgent === AgentName.Idle
+        ? "starting"
+        : `${activeAgent} · ${step || (activeAgent === AgentName.Planner ? "thinking" : "searching")}`
       : null;
 
   // Tint the subline dot with the active agent's protocol color so the
   // status indicator and the highlighted card agree at a glance.
   const sublineDotClass =
-    activeAgent === "planner"
+    activeAgent === AgentName.Planner
       ? "bg-agui"
-      : activeAgent === "search"
+      : activeAgent === AgentName.Search
         ? "bg-a2a"
         : toolRunning
           ? "bg-mcp"

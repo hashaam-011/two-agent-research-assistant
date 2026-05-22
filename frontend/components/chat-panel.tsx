@@ -50,7 +50,7 @@ export function ChatPanel() {
           its own announcement. */}
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-5"
+        className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-7 py-5 space-y-5"
       >
         {messages.length === 0 ? (
           <EmptyState onPick={sendMessage} />

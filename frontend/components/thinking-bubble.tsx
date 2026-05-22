@@ -2,6 +2,7 @@
 
 import { useAppState } from "@/components/app-state";
 import { cn } from "@/lib/utils";
+import { AgentName } from "@/lib/agui-types";
 
 /**
  * Pre-message "thinking" placeholder, in the spirit of Claude / ChatGPT.
@@ -9,46 +10,42 @@ import { cn } from "@/lib/utils";
  * started streaming yet (i.e. between RUN_STARTED and TEXT_MESSAGE_START).
  *
  * Reads the live step label from app state so the dots are accompanied by
- * the current human-readable activity ("thinking…", "searching the web…",
- * "writing answer…").
+ * the current human-readable activity ("thinking", "searching the web",
+ * "writing answer").
  */
 export function ThinkingBubble() {
   const { activeAgent, step } = useAppState();
 
   const agentLabel =
-    activeAgent === "search" ? "search" : activeAgent === "planner" ? "planner" : "agent";
+    activeAgent === AgentName.Search
+      ? "search"
+      : activeAgent === AgentName.Planner
+        ? "planner"
+        : "agent";
 
-  // Match the protocol-coded colors used in agent-flow.tsx so the avatar
-  // tint stays consistent as the active agent swaps.
-  const tone =
-    activeAgent === "search"
+  // Tint the agent name with the same protocol color used in the chat bubble
+  // and the activity flow — the only visual cue for which agent is active
+  // now that the circular avatar is gone.
+  const nameTone =
+    activeAgent === AgentName.Search
       ? "text-a2a"
-      : activeAgent === "planner"
+      : activeAgent === AgentName.Planner
         ? "text-agui"
         : "text-accent";
 
   return (
-    <div className="flex gap-3 animate-fade-up">
-      <div
-        className={cn(
-          "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-panel-2 ring-1 ring-line text-[10.5px] font-semibold",
-          tone,
-        )}
-      >
-        {activeAgent === "search" ? "SE" : "PL"}
+    <div className="animate-fade-up min-w-0 space-y-1.5">
+      <div className="flex items-baseline gap-2 text-[11px]">
+        <span className={cn("font-medium", nameTone)}>{agentLabel}</span>
+        <span className="text-dim">.agent</span>
       </div>
-      <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
-        <div className="text-[11px] text-muted">
-          <span>{agentLabel}.agent</span>
-        </div>
-        <div className="flex items-center gap-2 text-[13.5px] text-muted">
-          <span className="lowercase">{step || "thinking…"}</span>
-          <span className="inline-flex items-center gap-1" aria-hidden>
-            <Dot delay={0} />
-            <Dot delay={140} />
-            <Dot delay={280} />
-          </span>
-        </div>
+      <div className="flex items-center gap-2 text-[13.5px] text-muted">
+        <span className="lowercase">{step || "thinking"}</span>
+        <span className="inline-flex items-center gap-1" aria-hidden>
+          <Dot delay={0} />
+          <Dot delay={140} />
+          <Dot delay={280} />
+        </span>
       </div>
     </div>
   );

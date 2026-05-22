@@ -15,14 +15,16 @@ export const SUGGESTIONS: readonly string[] = [
 ] as const;
 
 // Maps the raw `step` strings the backend sends onto display-friendly labels.
+// No trailing ellipsis — the animated dots in the thinking bubble and the
+// pulsing dot in the agent-flow subline already convey "in progress".
 // Anything not in the map falls through unchanged.
 const FRIENDLY_STEP: Record<string, string> = {
-  "decomposing question": "thinking…",
-  "synthesising answer": "writing answer…",
-  "writing answer": "writing answer…",
-  "preparing web_search call": "preparing search…",
-  "searching the web": "searching the web…",
-  "searching...": "searching the web…",
+  "decomposing question": "thinking",
+  "synthesising answer": "writing answer",
+  "writing answer": "writing answer",
+  "preparing web_search call": "preparing search",
+  "searching the web": "searching the web",
+  "searching...": "searching the web",
   "search complete": "search complete",
 };
 

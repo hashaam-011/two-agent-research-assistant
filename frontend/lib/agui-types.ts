@@ -40,8 +40,33 @@ export type WebSearchResponse = {
 // STATE_DELTA payload — Activity panel state
 // ─────────────────────────────────────────────
 
-export type AgentName = "planner" | "search" | "idle";
-export type ToolStatus = "running" | "done" | "error";
+/**
+ * Agent identity. Two declarations sharing the same name:
+ *   - The `const` lives in the value space — use it for comparisons
+ *     (`activeAgent === AgentName.Planner`), avoiding stringly-typed checks.
+ *   - The `type` lives in the type space — derived from the const so the
+ *     two can never drift.
+ *
+ * Prefer this over the legacy string literals: `"planner"` etc. still
+ * type-check because the literal is assignable, but the const is the
+ * canonical source.
+ */
+export const AgentName = {
+  Planner: "planner",
+  Search: "search",
+  Idle: "idle",
+} as const;
+export type AgentName = (typeof AgentName)[keyof typeof AgentName];
+
+/** Subset of AgentName for places that can only be a working agent (not "idle"). */
+export type WorkingAgent = typeof AgentName.Planner | typeof AgentName.Search;
+
+export const ToolStatus = {
+  Running: "running",
+  Done: "done",
+  Error: "error",
+} as const;
+export type ToolStatus = (typeof ToolStatus)[keyof typeof ToolStatus];
 
 export type ToolCall = {
   id: string;
@@ -106,7 +131,7 @@ export type AgentEvent = {
   type: AgentEventType;
   title: string;
   detail?: string;
-  agent?: "planner" | "search";
+  agent?: WorkingAgent;
 };
 
 export type ChatMessage =
@@ -114,7 +139,7 @@ export type ChatMessage =
   | {
       id: string;
       role: "assistant";
-      agent: "planner" | "search";
+      agent: WorkingAgent;
       content: string;
       streaming?: boolean;
       tool?: {

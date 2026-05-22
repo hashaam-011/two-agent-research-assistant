@@ -12,9 +12,9 @@ import {
 import { useAgentStream } from "@/hooks/use-agent-stream";
 import { friendlyStep } from "@/lib/mock-data";
 import { formatHMS } from "@/lib/utils";
+import { AgentName } from "@/lib/agui-types";
 import type {
   AgentEvent,
-  AgentName,
   AnyAgentEvent,
   ChatMessage,
   PlannerMessage,
@@ -44,13 +44,13 @@ function newId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function agentTagFor(active: AgentName): "planner" | "search" | undefined {
-  return active === "planner" || active === "search" ? active : undefined;
+function agentTagFor(active: AgentName) {
+  return active === AgentName.Planner || active === AgentName.Search ? active : undefined;
 }
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<RunStatus>("ready");
-  const [activeAgent, setActiveAgent] = useState<AgentName>("idle");
+  const [activeAgent, setActiveAgent] = useState<AgentName>(AgentName.Idle);
   const [step, setStep] = useState<string>("idle");
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -100,7 +100,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             type: e.type,
             title: "Run started",
             detail: `run_id=${e.data.run_id}`,
-            agent: "planner",
+            agent: AgentName.Planner,
           });
           break;
         }
@@ -152,7 +152,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             type: e.type,
             title: `${e.data.tool_name}()`,
             detail: args.query ? `"${args.query}"` : undefined,
-            agent: "search",
+            agent: AgentName.Search,
           });
           break;
         }
@@ -167,7 +167,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             type: e.type,
             title: "tool returned",
             detail: `${results.length} result${results.length === 1 ? "" : "s"}`,
-            agent: "search",
+            agent: AgentName.Search,
           });
           break;
         }
@@ -181,7 +181,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             {
               id,
               role: "assistant",
-              agent: "planner",
+              agent: AgentName.Planner,
               content: "",
               streaming: true,
               tool:
@@ -195,7 +195,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             ts: formatHMS(),
             type: e.type,
             title: "assistant message open",
-            agent: "planner",
+            agent: AgentName.Planner,
           });
           break;
         }
@@ -221,7 +221,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             ts: formatHMS(),
             type: e.type,
             title: "assistant message closed",
-            agent: "planner",
+            agent: AgentName.Planner,
           });
           break;
         }
@@ -231,14 +231,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             ts: formatHMS(),
             type: e.type,
             title: "Run finished",
-            agent: "planner",
+            agent: AgentName.Planner,
           });
           break;
         }
         case "RUN_ERROR": {
           setErrorMessage(e.data.message);
           setStatus("error");
-          setActiveAgent("idle");
+          setActiveAgent(AgentName.Idle);
           finalizeStreamingMessage();
           appendEvent({
             id: newId("e"),
@@ -246,7 +246,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             type: e.type,
             title: "Run error",
             detail: e.data.message,
-            agent: "planner",
+            agent: AgentName.Planner,
           });
           break;
         }
@@ -265,8 +265,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       // history. Use "New chat" / clearThread to wipe.
       setErrorMessage(undefined);
       setStatus("streaming");
-      setActiveAgent("idle");
-      setStep("starting…");
+      setActiveAgent(AgentName.Idle);
+      setStep("starting");
       setToolCalls([]);
       assistantMsgIdRef.current = null;
       pendingToolRef.current = null;
@@ -284,7 +284,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
       // Local context object so STATE_DELTA can pass the latest active agent
       // through to subsequent STEP_* events without round-tripping React state.
-      const ctx = { currentActive: { value: "idle" as AgentName } };
+      const ctx = { currentActive: { value: AgentName.Idle as AgentName } };
 
       void send(
         { thread_id: threadId, messages: planner },
@@ -293,13 +293,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           onError: (err) => {
             setStatus("error");
             setErrorMessage(err.message);
-            setActiveAgent("idle");
+            setActiveAgent(AgentName.Idle);
             finalizeStreamingMessage();
           },
           onDone: () => {
             // Don't clobber an error status set in-stream by RUN_ERROR.
             setStatus((prev) => (prev === "error" ? prev : "ready"));
-            setActiveAgent("idle");
+            setActiveAgent(AgentName.Idle);
             setStep("idle");
           },
         },
@@ -311,7 +311,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const cancelRun = useCallback(() => {
     cancel();
     setStatus("ready");
-    setActiveAgent("idle");
+    setActiveAgent(AgentName.Idle);
     setStep("cancelled");
     finalizeStreamingMessage();
     // Clear refs so any chunk that races past the abort can't append onto the
@@ -325,7 +325,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setMessages([]);
     setEvents([]);
     setToolCalls([]);
-    setActiveAgent("idle");
+    setActiveAgent(AgentName.Idle);
     setStep("idle");
     setStatus("ready");
     setErrorMessage(undefined);
