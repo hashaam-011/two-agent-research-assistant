@@ -1,7 +1,42 @@
 # Two-Agent Research Assistant
 ### AI Agent Protocol Stack · Internal Research Sprint
 
-> **Status:** Complete · **Sprint:** 3 days · **Team size:** 3 people
+> **Status:** Live · **Sprint:** 3 days · **Team size:** 3 people
+
+---
+
+## Live Demo
+
+| Service | URL |
+|---|---|
+| **Frontend** | https://two-agent-research-assistant.vercel.app/ |
+| **Planner Agent** | https://hashaam18-planneragent.hf.space |
+| **Search Agent** | https://hashaam18-searchagent.hf.space |
+| **MCP Tool Server** | https://two-agent-research-assistant-1.onrender.com |
+
+### How to demo
+1. Open https://two-agent-research-assistant.vercel.app/
+2. Type any research question e.g. *"What are the latest developments in AI agents?"*
+3. Watch the **Agent Activity panel** on the right — you will see:
+   - Planner Agent starts, delegates to Search Agent
+   - Search Agent calls the `web_search` tool via MCP
+   - Results bubble back to Planner
+   - Answer streams token by token into the chat
+4. The full SSE event stream can be inspected at https://hashaam18-planneragent.hf.space/docs
+
+### Deployment overview
+
+| Service | Platform | Notes |
+|---|---|---|
+| Frontend (Next.js) | Vercel | Auto-deploys from `main` branch |
+| Planner Agent (FastAPI) | Hugging Face Spaces | Port 7860, Docker-based |
+| Search Agent (FastAPI) | Hugging Face Spaces | Port 7860, Docker-based |
+| MCP Tool Server (FastMCP) | Render | Free tier — 30s cold start after inactivity |
+
+### Optional: enable real AI responses
+Add `ANTHROPIC_API_KEY` as a secret on the Planner Agent HF Space:
+`https://huggingface.co/spaces/hashaam18/planneragent` → Settings → Variables and secrets
+Without it, the planner uses a mock response that summarises search results.
 
 ---
 
@@ -335,7 +370,7 @@ The POC is complete when **all** of the following are true:
 
 **Integration**
 - [x] `docker compose up` starts all services with no manual steps
-- [ ] Full question → answer flow works end-to-end
+- [x] Full question → answer flow works end-to-end (live at https://two-agent-research-assistant.vercel.app/)
 - [ ] Loom / screen recording of the working demo committed to the repo
 - [x] `README.md` with setup instructions committed
 
