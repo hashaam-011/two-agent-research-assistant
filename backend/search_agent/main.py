@@ -108,7 +108,7 @@ async def receive_task(task: TaskRequest):
     try:
         async with Client(MCP_SERVER_URL) as mcp_client:
             result = await mcp_client.call_tool("web_search", {"query": task.query})
-            if result.isError:
+            if getattr(result, "is_error", False):
                 return JSONResponse(
                     status_code=502,
                     content={
