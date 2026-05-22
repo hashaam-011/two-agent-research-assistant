@@ -1,19 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { useAppState } from "@/components/app-state";
 import { AgentFlow } from "@/components/agent-flow";
 import { EventLog } from "@/components/event-log";
+import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
 
 export function ActivityPanel() {
   const { events, status } = useAppState();
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [events]);
+  const scrollRef = useStickToBottom<HTMLDivElement>([events]);
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-panel ring-1 ring-line rounded-lg overflow-hidden">

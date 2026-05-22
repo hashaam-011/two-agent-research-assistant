@@ -4,12 +4,14 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { useAgentStream } from "@/hooks/use-agent-stream";
 import { friendlyStep } from "@/lib/mock-data";
+import { formatHMS } from "@/lib/utils";
 import type {
   AgentEvent,
   AgentName,
@@ -38,20 +40,12 @@ export type AppState = {
 
 const AppStateContext = createContext<AppState | null>(null);
 
-function newId(prefix: string) {
+function newId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function fmtTs(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
 function agentTagFor(active: AgentName): "planner" | "search" | undefined {
-  if (active === "planner") return "planner";
-  if (active === "search") return "search";
-  return undefined;
+  return active === "planner" || active === "search" ? active : undefined;
 }
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
@@ -76,8 +70,24 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const { send, cancel } = useAgentStream();
 
+  // Abort any in-flight stream if the provider unmounts (route change,
+  // hot-reload). Without this the fetch keeps running in the background.
+  useEffect(() => {
+    return () => cancel();
+  }, [cancel]);
+
   const appendEvent = useCallback((ev: AgentEvent) => {
     setEvents((prev) => [...prev, ev]);
+  }, []);
+
+  const finalizeStreamingMessage = useCallback(() => {
+    const id = assistantMsgIdRef.current;
+    if (!id) return;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id && m.role === "assistant" ? { ...m, streaming: false } : m,
+      ),
+    );
   }, []);
 
   const handleEvent = useCallback(
@@ -86,7 +96,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         case "RUN_STARTED": {
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: "Run started",
             detail: `run_id=${e.data.run_id}`,
@@ -97,7 +107,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         case "STEP_STARTED": {
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: e.data.name,
             agent: agentTagFor(ctx.currentActive.value),
@@ -107,7 +117,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         case "STEP_FINISHED": {
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: `${e.data.name} ✓`,
             agent: agentTagFor(ctx.currentActive.value),
@@ -121,7 +131,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           setToolCalls(e.data.tool_calls ?? []);
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: `${e.data.active_agent} · ${friendlyStep(e.data.step)}`,
             agent: agentTagFor(e.data.active_agent),
@@ -138,7 +148,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           };
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: `${e.data.tool_name}()`,
             detail: args.query ? `"${args.query}"` : undefined,
@@ -153,7 +163,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           }
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: "tool returned",
             detail: `${results.length} result${results.length === 1 ? "" : "s"}`,
@@ -182,7 +192,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           ]);
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: "assistant message open",
             agent: "planner",
@@ -192,27 +202,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         case "TEXT_MESSAGE_CONTENT": {
           const id = assistantMsgIdRef.current;
           if (!id) break;
+          // Real backend sends `content`; AG-UI-spec mocks send `delta`.
+          const chunk = e.data.content ?? e.data.delta ?? "";
+          if (!chunk) break;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === id && m.role === "assistant"
-                ? { ...m, content: m.content + e.data.delta }
+                ? { ...m, content: m.content + chunk }
                 : m,
             ),
           );
           break;
         }
         case "TEXT_MESSAGE_END": {
-          const id = assistantMsgIdRef.current;
-          if (id) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === id && m.role === "assistant" ? { ...m, streaming: false } : m,
-              ),
-            );
-          }
+          finalizeStreamingMessage();
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: "assistant message closed",
             agent: "planner",
@@ -222,7 +228,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         case "RUN_FINISHED": {
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: "Run finished",
             agent: "planner",
@@ -231,9 +237,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
         case "RUN_ERROR": {
           setErrorMessage(e.data.message);
+          setStatus("error");
+          setActiveAgent("idle");
+          finalizeStreamingMessage();
           appendEvent({
             id: newId("e"),
-            ts: fmtTs(),
+            ts: formatHMS(),
             type: e.type,
             title: "Run error",
             detail: e.data.message,
@@ -243,7 +252,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [appendEvent],
+    [appendEvent, finalizeStreamingMessage],
   );
 
   const sendMessage = useCallback(
@@ -266,11 +275,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       const nextMessages = [...messages, userMsg];
       setMessages(nextMessages);
 
-      // Build the planner request body from the full conversation.
-      // TODO(B3-integration): assistant turns carry a `tool` field with the
-      // search results that produced them. Once the real Planner Agent lands,
-      // decide with backend whether tool context should be folded into prior
-      // assistant `content`, sent as a separate field, or re-fetched server-side.
+      // Build the planner request body from the full conversation. Strip the
+      // UI-only `tool` field — the planner only needs role + content.
       const planner: PlannerMessage[] = nextMessages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -288,16 +294,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             setStatus("error");
             setErrorMessage(err.message);
             setActiveAgent("idle");
+            finalizeStreamingMessage();
           },
           onDone: () => {
-            setStatus("ready");
+            // Don't clobber an error status set in-stream by RUN_ERROR.
+            setStatus((prev) => (prev === "error" ? prev : "ready"));
             setActiveAgent("idle");
             setStep("idle");
           },
         },
       );
     },
-    [messages, status, threadId, send, handleEvent],
+    [messages, status, threadId, send, handleEvent, finalizeStreamingMessage],
   );
 
   const cancelRun = useCallback(() => {
@@ -305,16 +313,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setStatus("ready");
     setActiveAgent("idle");
     setStep("cancelled");
-    // Finalize any streaming assistant bubble so the UI stops blinking.
-    const id = assistantMsgIdRef.current;
-    if (id) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id && m.role === "assistant" ? { ...m, streaming: false } : m,
-        ),
-      );
-    }
-  }, [cancel]);
+    finalizeStreamingMessage();
+    // Clear refs so any chunk that races past the abort can't append onto the
+    // finalised bubble or attach a stale tool card to the next run.
+    assistantMsgIdRef.current = null;
+    pendingToolRef.current = null;
+  }, [cancel, finalizeStreamingMessage]);
 
   const clearThread = useCallback(() => {
     cancel();
@@ -329,6 +333,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     // conversation rather than resuming the old context.
     setThreadId(newId("thr"));
     assistantMsgIdRef.current = null;
+    pendingToolRef.current = null;
   }, [cancel]);
 
   const value = useMemo<AppState>(
@@ -345,13 +350,25 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       cancelRun,
       clearThread,
     }),
-    [status, activeAgent, step, toolCalls, events, messages, threadId, errorMessage, sendMessage, cancelRun, clearThread],
+    [
+      status,
+      activeAgent,
+      step,
+      toolCalls,
+      events,
+      messages,
+      threadId,
+      errorMessage,
+      sendMessage,
+      cancelRun,
+      clearThread,
+    ],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }
 
-export function useAppState() {
+export function useAppState(): AppState {
   const ctx = useContext(AppStateContext);
   if (!ctx) throw new Error("useAppState must be used inside AppStateProvider");
   return ctx;

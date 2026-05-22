@@ -75,6 +75,17 @@ export function AgentFlow() {
         : `${activeAgent} · ${step || (activeAgent === "planner" ? "thinking…" : "searching…")}`
       : null;
 
+  // Tint the subline dot with the active agent's protocol color so the
+  // status indicator and the highlighted card agree at a glance.
+  const sublineDotClass =
+    activeAgent === "planner"
+      ? "bg-agui"
+      : activeAgent === "search"
+        ? "bg-a2a"
+        : toolRunning
+          ? "bg-mcp"
+          : "bg-muted";
+
   return (
     <div className="px-3 sm:px-4 pt-4 pb-3">
       <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch gap-1.5 sm:gap-2">
@@ -87,7 +98,12 @@ export function AgentFlow() {
 
       {subline && (
         <div className="mt-3 flex items-center gap-2 text-[11px] text-muted lowercase">
-          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-agui animate-pulse-soft" />
+          <span
+            className={cn(
+              "inline-flex h-1.5 w-1.5 rounded-full animate-pulse-soft",
+              sublineDotClass,
+            )}
+          />
           <span className="truncate">{subline}</span>
         </div>
       )}

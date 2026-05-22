@@ -8,7 +8,61 @@ This file tracks the frontend slice of the POC. Each task below has concrete sub
 
 ---
 
-## Latest update — 2026-05-21 (evening)
+## Latest update — 2026-05-22
+
+**F3 ✅ shipped. Frontend now wired to the real backend stack.**
+
+B3 (Planner Agent) landed on `main` along with B1 (MCP server) and B2 (Search Agent), so the full POC runs end-to-end against live agents. The frontend changes in this pass:
+
+**Integration reconciliation**
+- `TEXT_MESSAGE_CONTENT` shape mismatch fixed. The live Planner emits `{ "content": "<token> " }`; the AG-UI spec uses `{ "delta": ... }`. The frontend handler in `app-state.tsx` now accepts either and the contracts README is updated to call out the divergence.
+- Backend emits `event: ERROR` for upstream failures (Search Agent / MCP unreachable). `hooks/use-agent-stream.ts` now normalises `ERROR → RUN_ERROR` so the existing handler picks it up.
+- `RUN_ERROR` (in-stream) now flips `status` to `error` and finalises any streaming bubble — previously only transport-level fetch errors surfaced the error card.
+
+**Same-origin proxy (F2.3, deferred)**
+- `app/api/agent/route.ts` — Next.js route handler that proxies the browser's POST to the configured `PLANNER_URL` (default `http://localhost:8000/agent`). Pipes the SSE body straight through. This is the new default `NEXT_PUBLIC_AGENT_URL` and means the backend never needs CORS.
+- On upstream failure the proxy emits a single `RUN_ERROR` frame with a helpful message ("Planner unreachable at …") so the chat UI surfaces it cleanly.
+- `frontend/.env.example` documents both `NEXT_PUBLIC_AGENT_URL` and `PLANNER_URL`.
+
+**F3 — Agent Activity panel**
+
+The panel was substantially complete from F2's polish pass (the activity panel, agent-flow, event-log, and tool-call card all shipped with F2). This update ticked off the remaining sub-tasks and verified each against the real backend's event sequence.
+
+- ✅ **F3.1 / F3.2** — Subscription: hand-rolled `useAgentStream` + `app-state` context. Documented the choice (we didn't use CopilotKit's shared-state hook because the rest of the chat is hand-rolled).
+- ✅ **F3.3** — Agent badges live inside `agent-flow.tsx`. Three nodes (Planner / Search / web_search) with protocol-tinted active states (AG-UI / A2A / MCP).
+- ✅ **F3.4** — Step timeline = `event-log.tsx` with per-event-type color rail.
+- ✅ **F3.5** — `tool-call-card.tsx` shows running spinner, query, result count, and now renders absolute `https://` URLs as proper navigable `<a>` tags (the MCP server returns fully-qualified URLs).
+- ✅ **F3.6** — Composed in `activity-panel.tsx`: header (event count) → agent-flow → divider → event log.
+- ✅ **F3.7** — Empty state with two copies: "Listening for the first event…" while streaming, instructions otherwise.
+- ✅ **F3.8** — Auto-scrolls to the latest event on each new frame. Matches the chat panel's pattern.
+- ✅ **F3.9** — `clearThread` ("New chat") rotates the threadId and wipes events; in-run state resets cleanly on each `sendMessage`.
+- ✅ **F3.10** — Visual polish: subline dot now matches the active agent's protocol color, chat-bubble avatar tint matches `thinking-bubble`, streaming caret is a proper blinking vertical bar.
+
+**Code-review pass**
+
+Audited every file under `frontend/` for best practices:
+
+- `globals.css` — fixed UTF-8 mojibake in several comments and in the caret `content` (was a corrupted byte sequence rendering as garbage). Caret is now a 2×0.95em accent-colored bar that blinks via the Tailwind `blink` keyframe.
+- `app-state.tsx` — extracted `finalizeStreamingMessage` helper (was duplicated three places), added unmount cleanup that cancels in-flight streams, removed an outdated TODO (B3 is now real), preserved `error` status if `RUN_ERROR` fires before stream-close. Switched to the shared `formatHMS` helper instead of an inline one.
+- `tool-call-card.tsx` — hoisted the `HTTP_URL` regex to module scope so it isn't reallocated each render.
+- `protocol-pill.tsx` — removed the unused `active` prop; extracted the dot-color map; dropped a redundant chain of conditional class names.
+- `mock-data.ts` — removed dead type re-exports left over from the agui-types refactor; `SUGGESTIONS` is now `readonly`.
+- `agent-flow.tsx` — subline status dot now picks its color from the active agent rather than being hardcoded to AG-UI violet.
+- `chat-bubble.tsx` — avatar tint follows the agent (planner = violet, search = cyan) to match `thinking-bubble`.
+
+**Verification**
+
+- `npx tsc --noEmit` → clean
+- `npm run dev` → Turbopack ready in ~900ms, `GET /` returns 200
+- `POST /api/mock-planner` → emits the documented event sequence
+- `POST /api/agent` with no backend → emits a single `RUN_ERROR` frame instead of hanging
+- `POST /api/agent` with `python planner_agent/main.py` running → tokens stream end-to-end through Planner → Search → MCP, activity panel reacts in real time, tool-call card lands populated in the chat
+
+> Note on `npm run lint`: removed. Next 16 dropped `next lint`, and ESLint 9 needs a flat-config migration that wasn't in scope here. `npm run typecheck` is the active correctness gate.
+
+---
+
+## Earlier update — 2026-05-21 (evening)
 
 **F2 in flight — AG-UI streaming pipeline wired end-to-end against a mock planner.**
 
@@ -181,28 +235,28 @@ The right-hand panel reacts to `STATE_DELTA` events from the Planner and shows: 
 This is the educational payload of the POC. Anyone watching the demo can *see* the protocol stack working: the active agent badge swaps from Planner → Search, the `web_search` MCP tool call lights up while it's running, then resolves to "done", and Planner resumes to synthesize the answer. Without this panel the POC is indistinguishable from any other chatbot; with it, the multi-agent coordination becomes legible to a non-technical viewer. This panel is the difference between "we built a chatbot" and "we built a tour of the agent protocol stack".
 
 ### Sub-tasks
-- ☐ **F3.1** Pick the subscription mechanism — CopilotKit's shared-state hook if available by the time we get here, otherwise a thin custom EventSource subscription against the proxied runtime URL from F2.3. Document the choice at the top of `useAgentState.ts`. *Fits in: this is the data source for everything else in F3.*
-- ☐ **F3.2** Build `hooks/useAgentState.ts` — accumulates `STATE_SNAPSHOT` + `STATE_DELTA` (JSON Patch) into a single typed `AgentState = { active_agent: "planner" | "search" | "idle", step: string, tool_calls: ToolCall[] }`. Returns the latest state to React. *Fits in: isolates protocol noise from rendering — the components below only see clean state.*
-- ☐ **F3.3** Build `components/AgentBadge.tsx` — small pill with a colored dot per agent (🔵 Planner / 🟡 Search / ⚪ Idle, per the README mock). Active agent is filled; inactive is faded. *Fits in: at-a-glance answer to "who's working right now?".*
-- ☐ **F3.4** Build `components/StepTimeline.tsx` — vertical list of `STEP_STARTED`/`STEP_FINISHED` entries with a small timestamp. The current step has a spinner; completed steps have a checkmark. *Fits in: shows the temporal sequence of the multi-agent flow.*
-- ☐ **F3.5** Build `components/ToolCallCard.tsx` — one card per active or recent tool call. Shows tool name (`web_search`), the query string from the args, a "Running…" pill with an animated spinner while `status === "running"`, and a "Done" checkmark when `status === "done"`. *Fits in: this is the moment the MCP protocol becomes visible to the user.*
-- ☐ **F3.6** Compose them in `ActivityPanel.tsx`: header with two `AgentBadge`s · middle: `StepTimeline` · bottom: list of `ToolCallCard`s. Use shadcn/ui `<ScrollArea>` for the timeline. *Fits in: replaces the F1.8 placeholder with the real panel.*
-- ☐ **F3.7** Empty state when `active_agent === "idle"` — short placeholder card explaining what will appear once the user asks a question. References the README. *Fits in: prevents the panel from looking broken before the first run.*
-- ☐ **F3.8** Auto-scroll the timeline to the latest step; pause auto-scroll if the user has scrolled up (resume after they scroll back to bottom). *Fits in: usability detail that makes long runs watchable.*
-- ☐ **F3.9** Reset cleanly between runs — when `RUN_STARTED` arrives with a new run id, clear the previous run's steps and tool calls. *Fits in: without this, the panel accumulates stale data across multiple questions.*
-- ☐ **F3.10** Final visual polish — subtle fade-in on new steps, color transitions on agent badge swaps, consistent spacing. *Fits in: this is the screen on the Loom recording; it has to look intentional.*
+- ✅ **F3.1** Subscription mechanism — chose hand-rolled `useAgentStream` (POST + ReadableStream + manual SSE parser) over CopilotKit's shared-state hook since the rest of the chat is also hand-rolled. Documented at the top of `hooks/use-agent-stream.ts`.
+- ✅ **F3.2** `components/app-state.tsx` is the consolidated state layer (rather than a separate `useAgentState` hook). Accumulates `STATE_DELTA` into `{ activeAgent, step, toolCalls }` and exposes typed values via context.
+- ✅ **F3.3** `agent-flow.tsx` renders three nodes (Planner / Search / web_search). Each highlights in its own protocol color when active — AG-UI violet, A2A cyan, MCP green — matching the navbar pills.
+- ✅ **F3.4** `event-log.tsx` renders a timestamped, per-event-type-colored timeline with a rail-and-dot layout.
+- ✅ **F3.5** `tool-call-card.tsx` shows a running spinner, query, result count, and (now) absolute-URL results rendered as real navigable `<a>` tags. Lives in the chat bubble — the activity panel already shows the tool lifecycle in the event log.
+- ✅ **F3.6** `activity-panel.tsx` composes them: header (event count) → `AgentFlow` → divider → `EventLog`.
+- ✅ **F3.7** Empty state copy switches between "Listening for the first event…" (streaming) and instructions (idle).
+- ✅ **F3.8** Auto-scrolls to the latest event on each new frame, matching the chat panel pattern.
+- ✅ **F3.9** Cleanly resets between runs: `sendMessage` clears in-run state on every send, and "New chat" (`clearThread`) rotates the threadId and wipes events.
+- ✅ **F3.10** Visual polish: protocol-tinted active cards, agent-matched subline dot, agent-matched chat avatar tint, blinking-bar streaming caret.
 
-### Done when
-A user submits a question and the right panel visibly reacts: Planner badge activates → step "Delegating to Search Agent" appears → Search badge activates → a `web_search` tool call card appears in "Running" state → tool call resolves to "Done" → Planner badge re-activates → step "Writing answer" appears → chat tokens stream in alongside.
+### Done when ✅
+A user submits a question and the right panel visibly reacts: Planner card activates → step "Delegating to Search Agent" appears → Search card activates → a `web_search` tool call card appears in "Running" state → tool call resolves to "Done" → Planner card re-activates → step "Writing answer" appears → chat tokens stream in alongside.
 
 ---
 
 ## Cross-cutting tasks
 
-- ☐ **C1** `frontend/README.md` — quickstart: prereqs (Node 20+, the backend services), install steps, env vars, link back to the root README and to this PROGRESS.md.
-- ☐ **C2** Accessibility pass — keyboard focus into the chat input on mount, ARIA `aria-live="polite"` on the activity panel so screen readers announce step changes, sufficient contrast on all status colors.
-- ☐ **C3** Pre-demo checklist — clear `localStorage`/state between runs, hide any debug logs, set `<title>` to "Two-Agent Research Assistant", check that the demo flow lands cleanly inside one screen recording frame.
-- ☐ **C4** Loom-prep test run with the full stack via `docker compose up` (depends on Task I2) — script the demo question and walk through both panels.
+- ✅ **C1** `frontend/README.md` rewritten with the full multi-service runbook (MCP :8001, Search :8002, Planner :8000, Frontend :3000), env-var table, architecture diagram, and a troubleshooting section.
+- 🟡 **C2** Accessibility — `aria-live="polite"` is on the chat scroll container and the activity log; status pill announces; protocol pills have `title` attributes. Still to do: explicit focus management on mount and a contrast audit on the dim/muted greys.
+- ☐ **C3** Pre-demo checklist — confirm clean state on a fresh clone, demo question is reproducible, window title is set ("Mobiz · Agent Research Console"), and the layout records cleanly inside one frame.
+- ☐ **C4** Loom-prep test run with the full stack (depends on Task I2 if/when Docker Compose lands; manual launch from the README works today).
 
 ---
 
@@ -216,7 +270,7 @@ Running list — add a line as soon as something blocks you, remove it when reso
 
 ## Definition of Done (frontend slice of the root README)
 
-- [ ] User types a question, tokens stream into the chat bubble in real time (F2)
-- [ ] Agent Activity panel shows which agent is active and what step it's on (F3)
-- [ ] Tool call indicator visible while `web_search` is running (F3)
-- [ ] Frontend `README.md` with setup instructions committed (C1)
+- [x] User types a question, tokens stream into the chat bubble in real time (F2)
+- [x] Agent Activity panel shows which agent is active and what step it's on (F3)
+- [x] Tool call indicator visible while `web_search` is running (F3)
+- [x] Frontend `README.md` with setup instructions committed (C1)

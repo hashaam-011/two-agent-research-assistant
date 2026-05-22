@@ -1,8 +1,25 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import { AGENT_URL } from "@/lib/env";
-import type { AnyAgentEvent, PlannerRequest } from "@/lib/agui-types";
+import { getAgentUrl } from "@/lib/env";
+import type { AgentEventType, AnyAgentEvent, PlannerRequest } from "@/lib/agui-types";
+
+// Set of event names we actually handle. The SSE parser rejects anything
+// outside this set so contract drift between backend and frontend doesn't
+// silently land as untyped `data` payloads in the handler's default branch.
+const KNOWN_EVENTS: ReadonlySet<AgentEventType> = new Set<AgentEventType>([
+  "RUN_STARTED",
+  "STEP_STARTED",
+  "STEP_FINISHED",
+  "STATE_DELTA",
+  "TOOL_CALL_START",
+  "TOOL_CALL_END",
+  "TEXT_MESSAGE_START",
+  "TEXT_MESSAGE_CONTENT",
+  "TEXT_MESSAGE_END",
+  "RUN_FINISHED",
+  "RUN_ERROR",
+]);
 
 /**
  * AG-UI SSE client.
@@ -35,7 +52,7 @@ export function useAgentStream() {
       controllerRef.current = controller;
 
       try {
-        const resp = await fetch(AGENT_URL, {
+        const resp = await fetch(getAgentUrl(), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -109,9 +126,19 @@ function parseSseFrame(frame: string): AnyAgentEvent | null {
   }
   const data = dataLines.join("\n");
   if (!event || !data) return null;
-  try {
-    return { type: event as AnyAgentEvent["type"], data: JSON.parse(data) } as AnyAgentEvent;
-  } catch {
+  // The Planner Agent emits `ERROR` for upstream failures; the frontend models
+  // them as RUN_ERROR. Normalize here so the handler only has one case.
+  const type = event === "ERROR" ? "RUN_ERROR" : event;
+  if (!KNOWN_EVENTS.has(type as AgentEventType)) {
+    console.warn(`[agent-stream] ignoring unknown event type: ${type}`);
     return null;
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch (err) {
+    console.warn(`[agent-stream] malformed JSON for ${type}:`, err);
+    return null;
+  }
+  return { type: type as AgentEventType, data: parsed } as AnyAgentEvent;
 }

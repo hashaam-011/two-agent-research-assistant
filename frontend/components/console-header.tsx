@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { ProtocolPill } from "@/components/protocol-pill";
 import { StatusPill } from "@/components/status-pill";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -12,14 +13,19 @@ export function ConsoleHeader() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/65">
-      <div className="mx-auto flex h-12 max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
-        {/* Brand */}
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="flex items-baseline gap-1.5 min-w-0">
-            <span className="font-semibold tracking-tight text-foreground">Mobiz</span>
-            <span className="hidden sm:inline text-[11px] text-dim truncate">
-              · Agent Research Console
-            </span>
+      <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 pl-3 pr-4 sm:pl-4 sm:pr-6 lg:pl-6 lg:pr-8">
+        {/* Brand — anchored to the left edge of the nav. */}
+        <div className="flex shrink-0 items-center gap-3 min-w-0">
+          <Image
+            src="/mobiz-logo.png"
+            alt="Mobiz"
+            width={160}
+            height={96}
+            priority
+            className="h-10 w-auto"
+          />
+          <span className="hidden sm:inline text-[12px] font-medium text-muted truncate">
+            · Agent Research Console
           </span>
         </div>
 

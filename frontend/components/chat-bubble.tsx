@@ -13,11 +13,19 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
     );
   }
 
-  // Assistant
+  // Tint the avatar with the protocol color of the agent that produced the
+  // message so the chat and the activity panel use the same visual language.
+  const avatarTone = message.agent === "search" ? "text-a2a" : "text-agui";
+
   return (
     <div className="flex gap-3 animate-fade-up">
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-panel-2 ring-1 ring-line text-[10.5px] font-semibold text-accent">
-        {message.agent === "planner" ? "PL" : "SE"}
+      <div
+        className={cn(
+          "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-panel-2 ring-1 ring-line text-[10.5px] font-semibold",
+          avatarTone,
+        )}
+      >
+        {message.agent === "search" ? "SE" : "PL"}
       </div>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-baseline gap-2 text-[11px]">

@@ -17,7 +17,10 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Mobiz · Agent Research Console",
+  // Tab favicon comes from `app/icon.png` (the Mobiz logo) — App Router
+  // auto-detects it. Title text drops the "Mobiz" word since the favicon
+  // already carries the brand.
+  title: "Agent Research Console",
   description:
     "Two AI agents collaborating in real time over the AI agent protocol stack — MCP · A2A · AG-UI · CopilotKit · Vercel AI SDK.",
 };

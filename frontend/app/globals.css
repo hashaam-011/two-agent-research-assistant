@@ -26,6 +26,8 @@
   --copilot: 251 191 36;           /* amber */
   --vercel: 251 113 133;           /* rose */
 
+  --mobiz: 214 35 42;              /* brand red, sampled from /mobiz-logo.png */
+
   --ok: 52 211 153;
   --warn: 251 191 36;
   --err: 251 113 133;
@@ -48,6 +50,8 @@
   --agui: 139 79 211;
   --copilot: 196 138 14;
   --vercel: 213 75 95;
+
+  --mobiz: 214 35 42;              /* brand red — same value across themes */
 
   --ok: 16 156 109;
   --warn: 196 138 14;
@@ -86,12 +90,15 @@ body {
   height: 1px;
 }
 
-/* Caret */
+/* Streaming caret — slim vertical bar that blinks while tokens stream in. */
 .caret::after {
-  content: "â–";
+  content: "";
   display: inline-block;
-  margin-left: 1px;
-  color: rgb(var(--accent));
+  width: 2px;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  background-color: rgb(var(--accent));
   animation: blink 1.1s steps(1) infinite;
 }
 
@@ -108,7 +115,7 @@ body {
   }
 }
 
-/* Scrollbars â€” tight and quiet */
+/* Scrollbars — tight and quiet */
 *::-webkit-scrollbar { width: 4px; height: 4px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
@@ -119,7 +126,7 @@ body {
 }
 *::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted) / 0.5); border: 1px solid transparent; background-clip: padding-box; }
 
-/* Focus rings â€” visible on interactive controls, suppressed on text fields
+/* Focus rings — visible on interactive controls, suppressed on text fields
    (text fields use their own focus-within ring on the wrapping card). */
 :focus-visible {
   outline: 2px solid rgb(var(--accent) / 0.55);
@@ -141,7 +148,7 @@ select:focus-visible {
   color: rgb(var(--foreground));
 }
 
-/* Utility â€” tiny eyebrow labels */
+/* Utility — tiny eyebrow labels */
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.16em;

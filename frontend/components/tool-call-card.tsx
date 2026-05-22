@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ChevronDown, Loader2, Wrench, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SearchResult } from "@/lib/agui-types";
+
+const HTTP_URL = /^https?:\/\//i;
 
 export function ToolCallCard({
   name,
@@ -19,6 +21,7 @@ export function ToolCallCard({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const panelId = useId();
   const trimmed = query.length > 28 ? query.slice(0, 28) + "…" : query;
 
   return (
@@ -29,6 +32,7 @@ export function ToolCallCard({
         title={query}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-panel transition-colors"
         aria-expanded={open}
+        aria-controls={panelId}
       >
         {status === "running" ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin text-mcp" />
@@ -55,14 +59,22 @@ export function ToolCallCard({
       </button>
 
       {open && results && (
-        <div className="divide-y divide-line/70 border-t border-line/70">
+        <div id={panelId} className="divide-y divide-line/70 border-t border-line/70">
           {results.map((r) => (
             <div key={r.url} className="px-3 py-2.5 hover:bg-panel/60 transition-colors">
               <div className="text-foreground text-[13px] leading-snug">{r.title}</div>
-              {/* TODO(F3): once B1 returns absolute URLs (with protocol), render this as
-                  <a href={r.url} target="_blank" rel="noopener noreferrer"> so the link
-                  is actually navigable. Today the mock emits bare hostnames. */}
-              <span className="text-[11px] text-mcp/90 break-all">{r.url}</span>
+              {HTTP_URL.test(r.url) ? (
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-mcp/90 break-all hover:underline hover:text-mcp"
+                >
+                  {r.url}
+                </a>
+              ) : (
+                <span className="text-[11px] text-mcp/90 break-all">{r.url}</span>
+              )}
               <div className="mt-1 text-[12px] text-muted leading-snug">{r.snippet}</div>
             </div>
           ))}

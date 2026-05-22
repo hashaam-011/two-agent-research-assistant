@@ -24,6 +24,7 @@ const config: Config = {
         agui: "rgb(var(--agui) / <alpha-value>)",
         copilot: "rgb(var(--copilot) / <alpha-value>)",
         vercel: "rgb(var(--vercel) / <alpha-value>)",
+        mobiz: "rgb(var(--mobiz) / <alpha-value>)",
         ok: "rgb(var(--ok) / <alpha-value>)",
         warn: "rgb(var(--warn) / <alpha-value>)",
         err: "rgb(var(--err) / <alpha-value>)",

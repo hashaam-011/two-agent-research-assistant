@@ -8,35 +8,31 @@ const PROTOCOL_TOKEN: Record<string, string> = {
   "Vercel AI": "bg-vercel/10 text-vercel ring-vercel/30",
 };
 
+const PROTOCOL_DOT: Record<string, string> = {
+  MCP: "bg-mcp",
+  A2A: "bg-a2a",
+  "AG-UI": "bg-agui",
+  CopilotKit: "bg-copilot",
+  "Vercel AI": "bg-vercel",
+};
+
 export function ProtocolPill({
   name,
-  active = true,
   className,
 }: {
   name: keyof typeof PROTOCOL_TOKEN | string;
-  active?: boolean;
   className?: string;
 }) {
   return (
     <span
       title={`${name} protocol`}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11px] font-medium ring-1 transition-opacity",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11px] font-medium ring-1",
         PROTOCOL_TOKEN[name] ?? "bg-muted/10 text-muted ring-line",
-        !active && "opacity-40",
         className,
       )}
     >
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          name === "MCP" && "bg-mcp",
-          name === "A2A" && "bg-a2a",
-          name === "AG-UI" && "bg-agui",
-          name === "CopilotKit" && "bg-copilot",
-          name === "Vercel AI" && "bg-vercel",
-        )}
-      />
+      <span className={cn("h-1.5 w-1.5 rounded-full", PROTOCOL_DOT[name] ?? "bg-muted")} />
       {name}
     </span>
   );

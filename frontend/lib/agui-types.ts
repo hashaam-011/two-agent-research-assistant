@@ -82,9 +82,11 @@ export type AgentEventPayload = {
   STATE_DELTA: StateDelta;
   TOOL_CALL_START: { tool_call_id: string; tool_name: string; arguments?: Record<string, unknown> };
   TOOL_CALL_END: { tool_call_id: string; tool_name: string; result?: WebSearchResponse };
-  TEXT_MESSAGE_START: { message_id: string; role?: "assistant" };
-  TEXT_MESSAGE_CONTENT: { message_id: string; delta: string };
-  TEXT_MESSAGE_END: { message_id: string };
+  TEXT_MESSAGE_START: { message_id?: string; role?: "assistant" };
+  // The real backend emits `content`; the AG-UI spec uses `delta`. Accept both
+  // so we work against the live Planner Agent and the spec-shaped mock.
+  TEXT_MESSAGE_CONTENT: { message_id?: string; content?: string; delta?: string };
+  TEXT_MESSAGE_END: { message_id?: string };
   RUN_FINISHED: { run_id: string };
   RUN_ERROR: { message: string };
 };

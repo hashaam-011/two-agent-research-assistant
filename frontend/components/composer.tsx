@@ -34,6 +34,10 @@ export function Composer() {
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Skip Enter while an IME composition is active so CJK users can confirm
+    // suggestions without accidentally submitting. `keyCode === 229` covers
+    // older browsers where `isComposing` isn't set.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -52,8 +56,8 @@ export function Composer() {
         className={cn(
           "group relative flex items-center gap-2 rounded-2xl bg-panel-2/70 ring-1 ring-line",
           "transition-all duration-200",
-          "focus-within:ring-accent/50 focus-within:bg-panel-2/90",
-          "focus-within:shadow-[0_0_0_4px_rgb(124_139_255_/_0.08)]",
+          "focus-within:ring-mobiz/40 focus-within:bg-panel-2/90",
+          "focus-within:shadow-[0_0_0_4px_rgb(var(--mobiz)/0.10)]",
         )}
       >
         <textarea
@@ -92,7 +96,7 @@ export function Composer() {
               className={cn(
                 "grid h-8 w-8 place-items-center rounded-full transition-all",
                 canSend
-                  ? "bg-foreground text-background hover:opacity-90 shadow-[0_0_0_3px_rgb(124_139_255_/_0.15)]"
+                  ? "bg-mobiz text-white hover:brightness-110 shadow-[0_0_0_3px_rgb(var(--mobiz)/0.20)]"
                   : "bg-panel text-dim/60 ring-1 ring-line cursor-not-allowed",
               )}
             >
