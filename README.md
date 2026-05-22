@@ -1,7 +1,61 @@
-# POC — Two-Agent Research Assistant
+# Two-Agent Research Assistant
 ### AI Agent Protocol Stack · Internal Research Sprint
 
-> **Status:** Assigned · **Sprint:** 3 days · **Team size:** 3 people (or pairs)
+> **Status:** Complete · **Sprint:** 3 days · **Team size:** 3 people
+
+---
+
+## 🚀 Quick Start
+
+### Option 1 — Docker (recommended)
+```bash
+cp .env.example .env          # optionally add ANTHROPIC_API_KEY
+docker compose up --build
+```
+Open http://localhost:3000
+
+### Option 2 — Run locally (4 terminals)
+
+**Prerequisites:** Python 3.9+, Node 20+
+
+```bash
+# Terminal 1 — MCP Tool Server
+cd backend && py -m venv venv && venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+python mcp_server/main.py
+
+# Terminal 2 — Search Agent
+cd backend && venv\Scripts\activate
+python search_agent/main.py
+
+# Terminal 3 — Planner Agent
+cd backend && venv\Scripts\activate
+python planner_agent/main.py
+
+# Terminal 4 — Frontend
+cd frontend
+cp .env.example .env.local
+npm install && npm run dev
+```
+
+### Environment variables
+
+| Variable | Where | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | `backend/.env` or root `.env` | Optional — uses mock responses if not set |
+| `NEXT_PUBLIC_AGENT_URL` | `frontend/.env.local` | Default: `/api/agent` |
+| `PLANNER_URL` | `frontend/.env.local` | Default: `http://localhost:8000/agent` |
+
+### Port map
+
+| Service | Port |
+|---|---|
+| Frontend | 3000 |
+| Planner Agent | 8000 |
+| MCP Tool Server | 8001 |
+| Search Agent | 8002 |
+
+---
 
 ---
 
@@ -268,22 +322,22 @@ Events emitted (in order):
 The POC is complete when **all** of the following are true:
 
 **Backend**
-- [ ] MCP server returns search results for any query on port 8001
-- [ ] Search Agent exposes a valid Agent Card at `/.well-known/agent-card.json`
-- [ ] Search Agent streams AG-UI events when called by the Planner
-- [ ] Planner Agent delegates to Search Agent via A2A (visible in server logs)
-- [ ] Planner Agent emits `STATE_DELTA` with active agent name and current step
+- [x] MCP server returns search results for any query on port 8001
+- [x] Search Agent exposes a valid Agent Card at `/.well-known/agent-card.json`
+- [x] Search Agent streams AG-UI events when called by the Planner
+- [x] Planner Agent delegates to Search Agent via A2A (visible in server logs)
+- [x] Planner Agent emits `STATE_DELTA` with active agent name and current step
 
 **Frontend**
-- [ ] User types a question, tokens stream into the chat bubble in real time
-- [ ] Agent Activity panel shows which agent is active and what step it's on
-- [ ] Tool call indicator visible while `web_search` is running
+- [x] User types a question, tokens stream into the chat bubble in real time
+- [x] Agent Activity panel shows which agent is active and what step it's on
+- [x] Tool call indicator visible while `web_search` is running
 
 **Integration**
-- [ ] `docker compose up` starts all services with no manual steps
+- [x] `docker compose up` starts all services with no manual steps
 - [ ] Full question → answer flow works end-to-end
 - [ ] Loom / screen recording of the working demo committed to the repo
-- [ ] `README.md` with setup instructions committed
+- [x] `README.md` with setup instructions committed
 
 ---
 

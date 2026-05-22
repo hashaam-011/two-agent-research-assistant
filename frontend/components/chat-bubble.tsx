@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/lib/agui-types";
 import { ToolCallCard } from "@/components/tool-call-card";
+import ReactMarkdown from "react-markdown";
 
 export function ChatBubble({ message }: { message: ChatMessage }) {
   if (message.role === "user") {
@@ -39,14 +40,14 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
             status="done"
           />
         )}
-        <p
+        <div
           className={cn(
-            "text-[13.5px] leading-relaxed text-foreground whitespace-pre-wrap",
+            "text-[13.5px] leading-relaxed text-foreground prose prose-invert prose-sm max-w-none",
             message.streaming && "caret",
           )}
         >
-          {message.content}
-        </p>
+          <ReactMarkdown>{message.content}</ReactMarkdown>
+        </div>
       </div>
     </div>
   );
