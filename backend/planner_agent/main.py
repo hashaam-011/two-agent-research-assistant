@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import uuid
+from collections.abc import AsyncGenerator
 
 import httpx
 import uvicorn
@@ -48,16 +49,19 @@ def sse_event(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {payload}\n\n"
 
 
-# --- Mock LLM synthesizer ---
-async def synthesize_answer(query: str, search_results: dict) -> str:
-    """Synthesize an answer from search results. Uses LLM if API key available, else mock."""
+# --- LLM token streaming ---
+async def stream_llm_tokens(
+    query: str, search_results: dict
+) -> AsyncGenerator[str, None]:
+    """Stream tokens from LLM if key available, else mock with delay."""
     if ANTHROPIC_API_KEY:
         try:
             from anthropic import Anthropic
 
             client = Anthropic(api_key=ANTHROPIC_API_KEY)
             results_text = json.dumps(search_results.get("results", []), indent=2)
-            response = client.messages.create(
+
+            with client.messages.stream(
                 model="claude-sonnet-4-20250514",
                 max_tokens=1024,
                 messages=[
@@ -71,26 +75,31 @@ async def synthesize_answer(query: str, search_results: dict) -> str:
                         ),
                     }
                 ],
-            )
-            return response.content[0].text  # type: ignore[union-attr]
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+            return
         except Exception as e:
-            return f"LLM call failed ({e}). Falling back to summary: Based on research about '{query}', multiple sources confirm significant developments in this area."
-    else:
-        # Mock response
-        results = search_results.get("results", [])
-        summary_parts = [
-            f"Based on my research about '{query}', here are the key findings:\n"
-        ]
-        for i, result in enumerate(results, 1):
-            summary_parts.append(f"{i}. **{result.get('title', 'Untitled')}**")
-            summary_parts.append(
-                f"   {result.get('snippet', 'No description available.')}\n"
-            )
+            yield f"LLM error: {e}. "
+
+    # Fallback: mock response with artificial delay
+    results = search_results.get("results", [])
+    summary_parts = [
+        f"Based on my research about '{query}', here are the key findings:\n"
+    ]
+    for i, result in enumerate(results, 1):
+        summary_parts.append(f"{i}. **{result.get('title', 'Untitled')}**")
         summary_parts.append(
-            "These sources provide a comprehensive overview of the topic "
-            "with recent developments and practical resources."
+            f"   {result.get('snippet', 'No description available.')}\n"
         )
-        return "\n".join(summary_parts)
+    summary_parts.append(
+        "These sources provide a comprehensive overview of the topic "
+        "with recent developments and practical resources."
+    )
+    answer = "\n".join(summary_parts)
+    for token in answer.split(" "):
+        yield token + " "
+        await asyncio.sleep(0.05)
 
 
 # --- Endpoints ---
@@ -221,33 +230,32 @@ async def agent_endpoint(request: PlannerRequest):
             },
         )
 
-        # 8. Synthesize answer (LLM or mock)
-        answer = await synthesize_answer(user_message, search_results)
-
-        # 9. STEP_FINISHED
+        # 8. STEP_FINISHED
         yield sse_event("STEP_FINISHED", {"name": "Delegating to Search Agent"})
 
-        # 10. TEXT_MESSAGE_START
+        # 9. TEXT_MESSAGE_START
         yield sse_event("TEXT_MESSAGE_START", {"message_id": str(uuid.uuid4())})
 
-        # 11. TEXT_MESSAGE_CONTENT — stream token by token
-        for token in answer.split(" "):
-            yield sse_event("TEXT_MESSAGE_CONTENT", {"content": token + " "})
-            await asyncio.sleep(0.03)
+        # 10. TEXT_MESSAGE_CONTENT — stream tokens from LLM or mock
+        # With real LLM: tokens arrive naturally with network delay
+        # With mock: artificial asyncio.sleep simulates streaming
+        async for token in stream_llm_tokens(user_message, search_results):
+            yield sse_event("TEXT_MESSAGE_CONTENT", {"content": token})
 
-        # 12. TEXT_MESSAGE_END
+        # 11. TEXT_MESSAGE_END
         yield sse_event("TEXT_MESSAGE_END", {})
 
-        # 13. RUN_FINISHED
+        # 12. RUN_FINISHED
         yield sse_event("RUN_FINISHED", {"run_id": run_id})
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
         },
     )
 
