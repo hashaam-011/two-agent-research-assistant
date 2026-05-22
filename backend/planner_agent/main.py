@@ -1,5 +1,6 @@
 """Planner Agent — orchestrates Search Agent and streams AG-UI events to frontend."""
 
+import asyncio
 import json
 import os
 import uuid
@@ -232,6 +233,7 @@ async def agent_endpoint(request: PlannerRequest):
         # 11. TEXT_MESSAGE_CONTENT — stream token by token
         for token in answer.split(" "):
             yield sse_event("TEXT_MESSAGE_CONTENT", {"content": token + " "})
+            await asyncio.sleep(0.03)
 
         # 12. TEXT_MESSAGE_END
         yield sse_event("TEXT_MESSAGE_END", {})
