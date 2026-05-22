@@ -1,8 +1,8 @@
 FROM python:3.12-slim
 WORKDIR /app
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY search_agent/ ./search_agent/
+COPY backend/search_agent/ ./search_agent/
 ENV SEARCH_AGENT_HOST=0.0.0.0
 ENV SEARCH_AGENT_PORT=8002
 ENV MCP_SERVER_URL=http://mcp-server:8001/sse
