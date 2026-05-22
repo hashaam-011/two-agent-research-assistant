@@ -26,6 +26,18 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Environment variables
+
+Copy the example env file:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | _(empty)_ | Anthropic API key for LLM. If not set, mock response is used |
+
 ## Run locally
 
 ### MCP Tool Server (Port 8001)
