@@ -1,9 +1,9 @@
 /**
- * TypeScript mirror of contracts/{planner_request,state_delta,tools}.py.
+ * TypeScript mirror of contracts/{planner_request,state_delta,tools}.py
+ * and the installed ag-ui-protocol spec (ag_ui/core/events.py).
  *
- * Keep field names IDENTICAL to the Python contracts so the SSE event
- * payloads deserialize cleanly into these shapes. If the contract changes
- * upstream, mirror the change here in the same PR.
+ * Field names match the AG-UI spec exactly so this client can consume
+ * any spec-conformant AG-UI stream (LangGraph, CrewAI, Mastra, CopilotKit).
  */
 
 // ─────────────────────────────────────────────
@@ -37,20 +37,9 @@ export type WebSearchResponse = {
 };
 
 // ─────────────────────────────────────────────
-// STATE_DELTA payload — Activity panel state
+// STATE_SNAPSHOT payload — Activity panel state
 // ─────────────────────────────────────────────
 
-/**
- * Agent identity. Two declarations sharing the same name:
- *   - The `const` lives in the value space — use it for comparisons
- *     (`activeAgent === AgentName.Planner`), avoiding stringly-typed checks.
- *   - The `type` lives in the type space — derived from the const so the
- *     two can never drift.
- *
- * Prefer this over the legacy string literals: `"planner"` etc. still
- * type-check because the literal is assignable, but the const is the
- * canonical source.
- */
 export const AgentName = {
   Planner: "planner",
   Search: "search",
@@ -58,7 +47,6 @@ export const AgentName = {
 } as const;
 export type AgentName = (typeof AgentName)[keyof typeof AgentName];
 
-/** Subset of AgentName for places that can only be a working agent (not "idle"). */
 export type WorkingAgent = typeof AgentName.Planner | typeof AgentName.Search;
 
 export const ToolStatus = {
@@ -76,44 +64,55 @@ export type ToolCall = {
   resultsCount: number | null;
 };
 
-export type StateDelta = {
+export type AppSnapshot = {
   active_agent: AgentName;
   step: string;
   tool_calls: ToolCall[];
 };
 
 // ─────────────────────────────────────────────
-// AG-UI event envelope
+// AG-UI event envelope — spec-conformant
 // ─────────────────────────────────────────────
 
 export type AgentEventType =
   | "RUN_STARTED"
   | "STEP_STARTED"
   | "STEP_FINISHED"
-  | "STATE_DELTA"
+  | "STATE_SNAPSHOT"
   | "TOOL_CALL_START"
+  | "TOOL_CALL_ARGS"
   | "TOOL_CALL_END"
+  | "TOOL_CALL_RESULT"
   | "TEXT_MESSAGE_START"
   | "TEXT_MESSAGE_CONTENT"
   | "TEXT_MESSAGE_END"
   | "RUN_FINISHED"
   | "RUN_ERROR";
 
-// Per-type payload shapes, indexed by event name.
+// Per-type payload shapes — field names match ag_ui/core/events.py exactly.
 export type AgentEventPayload = {
-  RUN_STARTED: { run_id: string; thread_id: string };
-  STEP_STARTED: { name: string };
-  STEP_FINISHED: { name: string };
-  STATE_DELTA: StateDelta;
-  TOOL_CALL_START: { tool_call_id: string; tool_name: string; arguments?: Record<string, unknown> };
-  TOOL_CALL_END: { tool_call_id: string; tool_name: string; result?: WebSearchResponse };
-  TEXT_MESSAGE_START: { message_id?: string; role?: "assistant" };
-  // The real backend emits `content`; the AG-UI spec uses `delta`. Accept both
-  // so we work against the live Planner Agent and the spec-shaped mock.
-  TEXT_MESSAGE_CONTENT: { message_id?: string; content?: string; delta?: string };
-  TEXT_MESSAGE_END: { message_id?: string };
-  RUN_FINISHED: { run_id: string };
-  RUN_ERROR: { message: string };
+  // Lifecycle — spec: thread_id + run_id required on both
+  RUN_STARTED: { thread_id: string; run_id: string };
+  RUN_FINISHED: { thread_id: string; run_id: string };
+  RUN_ERROR: { message: string; code?: string };
+
+  // Steps — spec field: step_name (not name)
+  STEP_STARTED: { step_name: string };
+  STEP_FINISHED: { step_name: string };
+
+  // State — STATE_SNAPSHOT wraps our custom shape in `snapshot`
+  STATE_SNAPSHOT: { snapshot: AppSnapshot };
+
+  // Tool calls — spec-correct lifecycle
+  TOOL_CALL_START: { tool_call_id: string; tool_call_name: string; parent_message_id?: string };
+  TOOL_CALL_ARGS: { tool_call_id: string; delta: string };
+  TOOL_CALL_END: { tool_call_id: string };
+  TOOL_CALL_RESULT: { message_id: string; tool_call_id: string; content: string; role?: "tool" };
+
+  // Text messages — spec: delta (not content); message_id required on all three
+  TEXT_MESSAGE_START: { message_id: string; role?: "assistant" | "user" | "system" | "developer" };
+  TEXT_MESSAGE_CONTENT: { message_id: string; delta: string };
+  TEXT_MESSAGE_END: { message_id: string };
 };
 
 // Discriminated union for typed event handling.

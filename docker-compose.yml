@@ -2,8 +2,9 @@ services:
 
   mcp-server:
     build:
-      context: ./backend
-      dockerfile: mcp_server/Dockerfile
+      context: .
+      dockerfile: backend/mcp_server/Dockerfile
+    restart: unless-stopped
     ports:
       - "8001:8001"
     environment:
@@ -18,8 +19,9 @@ services:
 
   search-agent:
     build:
-      context: ./backend
-      dockerfile: search_agent/Dockerfile
+      context: .
+      dockerfile: backend/search_agent/Dockerfile
+    restart: unless-stopped
     ports:
       - "8002:8002"
     environment:
@@ -38,8 +40,9 @@ services:
 
   planner-agent:
     build:
-      context: ./backend
-      dockerfile: planner_agent/Dockerfile
+      context: .
+      dockerfile: backend/planner_agent/Dockerfile
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
@@ -61,6 +64,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:

@@ -56,22 +56,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
-  // Lives in state so clearThread can rotate it — without that, "New chat"
-  // resets the UI but the planner still resumes the prior conversation.
-  // threadId is never rendered, only sent in the request body, so a
-  // server/client mismatch from Math.random doesn't cause a hydration error.
   const [threadId, setThreadId] = useState<string>(() => newId("thr"));
   const assistantMsgIdRef = useRef<string | null>(null);
-  // Tool calls land before the assistant message exists, so buffer them and
-  // attach to the assistant bubble when TEXT_MESSAGE_START fires.
+  // Tool calls arrive before the assistant bubble; buffer them and attach
+  // once TEXT_MESSAGE_START fires.
   const pendingToolRef = useRef<{ name: string; query: string; results?: SearchResult[] } | null>(
     null,
   );
 
   const { send, cancel } = useAgentStream();
 
-  // Abort any in-flight stream if the provider unmounts (route change,
-  // hot-reload). Without this the fetch keeps running in the background.
   useEffect(() => {
     return () => cancel();
   }, [cancel]);
@@ -105,68 +99,108 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           break;
         }
         case "STEP_STARTED": {
+          // spec field: step_name (not name)
           appendEvent({
             id: newId("e"),
             ts: formatHMS(),
             type: e.type,
-            title: e.data.name,
+            title: e.data.step_name,
             agent: agentTagFor(ctx.currentActive.value),
           });
           break;
         }
         case "STEP_FINISHED": {
+          // spec field: step_name (not name)
           appendEvent({
             id: newId("e"),
             ts: formatHMS(),
             type: e.type,
-            title: `${e.data.name} ✓`,
+            title: `${e.data.step_name} ✓`,
             agent: agentTagFor(ctx.currentActive.value),
           });
           break;
         }
-        case "STATE_DELTA": {
-          ctx.currentActive.value = e.data.active_agent;
-          setActiveAgent(e.data.active_agent);
-          setStep(friendlyStep(e.data.step));
-          setToolCalls(e.data.tool_calls ?? []);
+        case "STATE_SNAPSHOT": {
+          // Our custom state is wrapped in `snapshot` per AG-UI STATE_SNAPSHOT spec
+          const s = e.data.snapshot;
+          ctx.currentActive.value = s.active_agent;
+          setActiveAgent(s.active_agent);
+          setStep(friendlyStep(s.step));
+          setToolCalls(s.tool_calls ?? []);
           appendEvent({
             id: newId("e"),
             ts: formatHMS(),
             type: e.type,
-            title: `${e.data.active_agent} · ${friendlyStep(e.data.step)}`,
-            agent: agentTagFor(e.data.active_agent),
+            title: `${s.active_agent} · ${friendlyStep(s.step)}`,
+            agent: agentTagFor(s.active_agent),
           });
           break;
         }
         case "TOOL_CALL_START": {
-          const args = (e.data.arguments as { query?: string }) ?? {};
-          // Buffer the call so the assistant bubble (created later by
-          // TEXT_MESSAGE_START) can render the expandable tool-call card.
+          // spec field: tool_call_name (not tool_name); args arrive in TOOL_CALL_ARGS
           pendingToolRef.current = {
-            name: e.data.tool_name,
-            query: String(args.query ?? ""),
+            name: e.data.tool_call_name,
+            query: "",
           };
           appendEvent({
             id: newId("e"),
             ts: formatHMS(),
             type: e.type,
-            title: `${e.data.tool_name}()`,
-            detail: args.query ? `"${args.query}"` : undefined,
+            title: `${e.data.tool_call_name}()`,
             agent: AgentName.Search,
           });
           break;
         }
-        case "TOOL_CALL_END": {
-          const results = e.data.result?.results ?? [];
+        case "TOOL_CALL_ARGS": {
+          // Parse args delta and update pending tool query
           if (pendingToolRef.current) {
-            pendingToolRef.current.results = results;
+            try {
+              const args = JSON.parse(e.data.delta) as { query?: string };
+              if (args.query) {
+                pendingToolRef.current.query = args.query;
+              }
+            } catch {
+              // malformed delta — leave query as-is
+            }
           }
           appendEvent({
             id: newId("e"),
             ts: formatHMS(),
             type: e.type,
-            title: "tool returned",
-            detail: `${results.length} result${results.length === 1 ? "" : "s"}`,
+            title: "tool args",
+            detail: e.data.delta.slice(0, 60),
+            agent: AgentName.Search,
+          });
+          break;
+        }
+        case "TOOL_CALL_END": {
+          // spec: TOOL_CALL_END carries only tool_call_id; results arrive in TOOL_CALL_RESULT
+          appendEvent({
+            id: newId("e"),
+            ts: formatHMS(),
+            type: e.type,
+            title: "tool call ended",
+            agent: AgentName.Search,
+          });
+          break;
+        }
+        case "TOOL_CALL_RESULT": {
+          // spec: content is a JSON string containing the tool output
+          if (pendingToolRef.current) {
+            try {
+              const parsed = JSON.parse(e.data.content) as { results?: SearchResult[] };
+              pendingToolRef.current.results = parsed.results ?? [];
+            } catch {
+              pendingToolRef.current.results = [];
+            }
+          }
+          const count = pendingToolRef.current?.results?.length ?? 0;
+          appendEvent({
+            id: newId("e"),
+            ts: formatHMS(),
+            type: e.type,
+            title: "tool result",
+            detail: `${count} result${count === 1 ? "" : "s"}`,
             agent: AgentName.Search,
           });
           break;
@@ -202,8 +236,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         case "TEXT_MESSAGE_CONTENT": {
           const id = assistantMsgIdRef.current;
           if (!id) break;
-          // Real backend sends `content`; AG-UI-spec mocks send `delta`.
-          const chunk = e.data.content ?? e.data.delta ?? "";
+          // spec field: delta (required); message_id required
+          const chunk = e.data.delta;
           if (!chunk) break;
           setMessages((prev) =>
             prev.map((m) =>
@@ -259,10 +293,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     (text: string) => {
       if (!text.trim() || status === "streaming") return;
 
-      // Reset transient state for a clean run, then append the user message.
-      // Note: events are NOT cleared here — they accumulate across turns in
-      // the same thread so the activity log shows the whole conversation's
-      // history. Use "New chat" / clearThread to wipe.
       setErrorMessage(undefined);
       setStatus("streaming");
       setActiveAgent(AgentName.Idle);
@@ -275,15 +305,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       const nextMessages = [...messages, userMsg];
       setMessages(nextMessages);
 
-      // Build the planner request body from the full conversation. Strip the
-      // UI-only `tool` field — the planner only needs role + content.
       const planner: PlannerMessage[] = nextMessages.map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
-      // Local context object so STATE_DELTA can pass the latest active agent
-      // through to subsequent STEP_* events without round-tripping React state.
       const ctx = { currentActive: { value: AgentName.Idle as AgentName } };
 
       void send(
@@ -297,7 +323,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             finalizeStreamingMessage();
           },
           onDone: () => {
-            // Don't clobber an error status set in-stream by RUN_ERROR.
             setStatus((prev) => (prev === "error" ? prev : "ready"));
             setActiveAgent(AgentName.Idle);
             setStep("idle");
@@ -314,8 +339,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setActiveAgent(AgentName.Idle);
     setStep("cancelled");
     finalizeStreamingMessage();
-    // Clear refs so any chunk that races past the abort can't append onto the
-    // finalised bubble or attach a stale tool card to the next run.
     assistantMsgIdRef.current = null;
     pendingToolRef.current = null;
   }, [cancel, finalizeStreamingMessage]);
@@ -329,8 +352,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setStep("idle");
     setStatus("ready");
     setErrorMessage(undefined);
-    // Rotate threadId so the planner treats the next message as a fresh
-    // conversation rather than resuming the old context.
     setThreadId(newId("thr"));
     assistantMsgIdRef.current = null;
     pendingToolRef.current = null;

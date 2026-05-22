@@ -17,6 +17,7 @@ SEARCH_AGENT_URL = os.getenv("SEARCH_AGENT_URL", "http://localhost:8002")
 PLANNER_HOST = os.getenv("PLANNER_HOST", "127.0.0.1")
 PLANNER_PORT = int(os.getenv("PLANNER_PORT", "8000"))
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+MODEL_ID = "claude-sonnet-4-6"
 
 
 # --- FastAPI App ---
@@ -44,7 +45,6 @@ class PlannerRequest(BaseModel):
 
 # --- Helper: format SSE event ---
 def sse_event(event_type: str, data: dict) -> str:
-    """Format a Server-Sent Event string."""
     payload = json.dumps(data)
     return f"event: {event_type}\ndata: {payload}\n\n"
 
@@ -53,7 +53,9 @@ def sse_event(event_type: str, data: dict) -> str:
 async def stream_llm_tokens(
     query: str, search_results: dict
 ) -> AsyncGenerator[str, None]:
-    """Stream tokens from LLM if key available, else mock with delay."""
+    """Stream tokens from LLM if key available, else mock with delay.
+    Raises RuntimeError on LLM failure so the caller can emit RUN_ERROR.
+    """
     if ANTHROPIC_API_KEY:
         try:
             from anthropic import Anthropic
@@ -62,7 +64,7 @@ async def stream_llm_tokens(
             results_text = json.dumps(search_results.get("results", []), indent=2)
 
             with client.messages.stream(
-                model="claude-sonnet-4-20250514",
+                model=MODEL_ID,
                 max_tokens=1024,
                 messages=[
                     {
@@ -80,7 +82,7 @@ async def stream_llm_tokens(
                     yield text
             return
         except Exception as e:
-            yield f"LLM error: {e}. "
+            raise RuntimeError(f"LLM error: {e}") from e
 
     # Fallback: mock response with artificial delay
     results = search_results.get("results", [])
@@ -105,7 +107,6 @@ async def stream_llm_tokens(
 # --- Endpoints ---
 @app.get("/health", tags=["Health"])
 def health():
-    """Liveness check."""
     return {"status": "ok"}
 
 
@@ -114,12 +115,11 @@ async def agent_endpoint(request: PlannerRequest):
     """
     AG-UI endpoint — receives user question, orchestrates search, streams response.
 
-    This is the main endpoint the frontend connects to.
-    Streams SSE events: RUN_STARTED, STEP_STARTED, STATE_DELTA,
-    TOOL_CALL_START, TOOL_CALL_END, TEXT_MESSAGE_START,
-    TEXT_MESSAGE_CONTENT, TEXT_MESSAGE_END, STEP_FINISHED, RUN_FINISHED.
+    Emits spec-compliant AG-UI SSE events:
+    RUN_STARTED, STEP_STARTED, STATE_SNAPSHOT, TOOL_CALL_START, TOOL_CALL_ARGS,
+    TOOL_CALL_END, TOOL_CALL_RESULT, STEP_FINISHED, TEXT_MESSAGE_START,
+    TEXT_MESSAGE_CONTENT, TEXT_MESSAGE_END, RUN_FINISHED / RUN_ERROR.
     """
-    # Extract the latest user message
     user_message = ""
     for msg in reversed(request.messages):
         if msg.role == "user":
@@ -128,55 +128,64 @@ async def agent_endpoint(request: PlannerRequest):
 
     if not user_message:
         return StreamingResponse(
-            iter([sse_event("ERROR", {"message": "No user message found."})]),
+            iter([sse_event("RUN_ERROR", {"message": "No user message found."})]),
             media_type="text/event-stream",
         )
 
     async def event_stream():
         run_id = str(uuid.uuid4())
         tool_call_id = str(uuid.uuid4())
+        msg_id = str(uuid.uuid4())
+        result_msg_id = str(uuid.uuid4())
 
-        # 1. RUN_STARTED
-        yield sse_event("RUN_STARTED", {"run_id": run_id})
-
-        # 2. STEP_STARTED — delegating to search
+        # 1. RUN_STARTED — spec requires thread_id + run_id
         yield sse_event(
-            "STEP_STARTED",
-            {"name": "Delegating to Search Agent"},
+            "RUN_STARTED", {"thread_id": request.thread_id, "run_id": run_id}
         )
 
-        # 3. STATE_DELTA — search agent active
+        # 2. STEP_STARTED — spec field: step_name (not name)
+        yield sse_event("STEP_STARTED", {"step_name": "Delegating to Search Agent"})
+
+        # 3. STATE_SNAPSHOT — our custom state shape wrapped in `snapshot`
+        #    (STATE_DELTA requires RFC 6902 JSON Patch; use STATE_SNAPSHOT instead)
         yield sse_event(
-            "STATE_DELTA",
+            "STATE_SNAPSHOT",
             {
-                "active_agent": "search",
-                "step": "searching...",
-                "tool_calls": [
-                    {
-                        "id": tool_call_id,
-                        "name": "web_search",
-                        "status": "running",
-                        "query": user_message,
-                        "resultsCount": None,
-                    }
-                ],
+                "snapshot": {
+                    "active_agent": "search",
+                    "step": "searching...",
+                    "tool_calls": [
+                        {
+                            "id": tool_call_id,
+                            "name": "web_search",
+                            "status": "running",
+                            "query": user_message,
+                            "resultsCount": None,
+                        }
+                    ],
+                }
             },
         )
 
-        # 4. TOOL_CALL_START
+        # 4. TOOL_CALL_START — spec: tool_call_name (not tool_name); no args here
         yield sse_event(
             "TOOL_CALL_START",
+            {"tool_call_id": tool_call_id, "tool_call_name": "web_search"},
+        )
+
+        # 5. TOOL_CALL_ARGS — spec: separate event; delta is a JSON-encoded string
+        yield sse_event(
+            "TOOL_CALL_ARGS",
             {
                 "tool_call_id": tool_call_id,
-                "tool_name": "web_search",
-                "arguments": {"query": user_message},
+                "delta": json.dumps({"query": user_message}),
             },
         )
 
-        # 5. Call Search Agent via A2A
-        search_results = {}
+        # 6. Call Search Agent via A2A
+        search_results: dict = {}
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
                     f"{SEARCH_AGENT_URL}/tasks",
                     json={
@@ -190,63 +199,78 @@ async def agent_endpoint(request: PlannerRequest):
                     search_results = data.get("result", {})
                 else:
                     yield sse_event(
-                        "ERROR",
+                        "RUN_ERROR",
                         {"message": f"Search Agent returned {response.status_code}"},
                     )
                     return
         except Exception as e:
             yield sse_event(
-                "ERROR",
-                {"message": f"Search Agent call failed: {str(e)}"},
+                "RUN_ERROR", {"message": f"Search Agent call failed: {str(e)}"}
             )
             return
 
-        # 6. TOOL_CALL_END
         results_count = len(search_results.get("results", []))
+
+        # 7. TOOL_CALL_END — spec: only tool_call_id
+        yield sse_event("TOOL_CALL_END", {"tool_call_id": tool_call_id})
+
+        # 8. TOOL_CALL_RESULT — spec: message_id + tool_call_id + content (JSON string)
         yield sse_event(
-            "TOOL_CALL_END",
+            "TOOL_CALL_RESULT",
             {
+                "message_id": result_msg_id,
                 "tool_call_id": tool_call_id,
-                "tool_name": "web_search",
-                "result": search_results,
+                "content": json.dumps(search_results),
+                "role": "tool",
             },
         )
 
-        # 7. STATE_DELTA — planner writing answer
+        # 9. STATE_SNAPSHOT — planner writing answer
         yield sse_event(
-            "STATE_DELTA",
+            "STATE_SNAPSHOT",
             {
-                "active_agent": "planner",
-                "step": "writing answer",
-                "tool_calls": [
-                    {
-                        "id": tool_call_id,
-                        "name": "web_search",
-                        "status": "done",
-                        "query": user_message,
-                        "resultsCount": results_count,
-                    }
-                ],
+                "snapshot": {
+                    "active_agent": "planner",
+                    "step": "writing answer",
+                    "tool_calls": [
+                        {
+                            "id": tool_call_id,
+                            "name": "web_search",
+                            "status": "done",
+                            "query": user_message,
+                            "resultsCount": results_count,
+                        }
+                    ],
+                }
             },
         )
 
-        # 8. STEP_FINISHED
-        yield sse_event("STEP_FINISHED", {"name": "Delegating to Search Agent"})
+        # 10. STEP_FINISHED — spec field: step_name (not name)
+        yield sse_event("STEP_FINISHED", {"step_name": "Delegating to Search Agent"})
 
-        # 9. TEXT_MESSAGE_START
-        yield sse_event("TEXT_MESSAGE_START", {"message_id": str(uuid.uuid4())})
+        # 11. TEXT_MESSAGE_START — message_id + role required by spec
+        yield sse_event(
+            "TEXT_MESSAGE_START", {"message_id": msg_id, "role": "assistant"}
+        )
 
-        # 10. TEXT_MESSAGE_CONTENT — stream tokens from LLM or mock
-        # With real LLM: tokens arrive naturally with network delay
-        # With mock: artificial asyncio.sleep simulates streaming
-        async for token in stream_llm_tokens(user_message, search_results):
-            yield sse_event("TEXT_MESSAGE_CONTENT", {"content": token})
+        # 12. TEXT_MESSAGE_CONTENT — spec: delta (not content) + message_id
+        try:
+            async for token in stream_llm_tokens(user_message, search_results):
+                yield sse_event(
+                    "TEXT_MESSAGE_CONTENT", {"message_id": msg_id, "delta": token}
+                )
+        except RuntimeError as e:
+            yield sse_event("TEXT_MESSAGE_END", {"message_id": msg_id})
+            yield sse_event("RUN_ERROR", {"message": str(e)})
+            return
 
-        # 11. TEXT_MESSAGE_END
-        yield sse_event("TEXT_MESSAGE_END", {})
+        # 13. TEXT_MESSAGE_END — message_id required by spec
+        yield sse_event("TEXT_MESSAGE_END", {"message_id": msg_id})
 
-        # 12. RUN_FINISHED
-        yield sse_event("RUN_FINISHED", {"run_id": run_id})
+        # 14. RUN_FINISHED — spec requires thread_id + run_id
+        yield sse_event(
+            "RUN_FINISHED", {"thread_id": request.thread_id, "run_id": run_id}
+        )
 
     return StreamingResponse(
         event_stream(),
