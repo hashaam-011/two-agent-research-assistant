@@ -1,4 +1,4 @@
-"""Shared tool schemas — both agents import these shapes."""
+"""Shared tool schemas — type contracts for the web_search MCP tool."""
 
 from typing import TypedDict
 
@@ -11,24 +11,3 @@ class SearchResult(TypedDict):
 
 class WebSearchResponse(TypedDict):
     results: list[SearchResult]
-
-
-def web_search(query: str) -> WebSearchResponse:
-    """
-    MCP tool: web_search
-
-    Args:
-        query: The search query string
-
-    Returns:
-        {
-            "results": [
-                {
-                    "title": str,
-                    "url": str,
-                    "snippet": str
-                }
-            ]
-        }
-    """
-    raise NotImplementedError("This is a contract stub — import and call the real MCP tool instead.")

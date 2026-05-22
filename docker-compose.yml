@@ -49,7 +49,7 @@ services:
       PLANNER_HOST: "0.0.0.0"
       PLANNER_PORT: "8000"
       SEARCH_AGENT_URL: "http://search-agent:8002"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
     depends_on:
       search-agent:
         condition: service_healthy
