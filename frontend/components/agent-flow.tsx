@@ -60,11 +60,14 @@ export function AgentFlow() {
   const { activeAgent, step, toolCalls, status } = useAppState();
 
   const toolRunning = toolCalls.some((t) => t.status === "running");
+  const toolUsed = toolCalls.length > 0;
   const isStreaming = status === "streaming";
   const isActive = (k: Node["key"]) => {
     if (k === "planner") return activeAgent === "planner";
     if (k === "search") return activeAgent === "search";
-    return toolRunning;
+    // Tool card stays active as long as there are tool calls in the current run
+    // (running OR done) so it doesn't flash off the moment TOOL_CALL_END fires.
+    return toolRunning || (toolUsed && activeAgent !== "idle");
   };
 
   // Only show the subline during an active run — no "ready" label at rest.
