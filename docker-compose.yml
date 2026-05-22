@@ -1,0 +1,77 @@
+services:
+
+  mcp-server:
+    build:
+      context: ./backend
+      dockerfile: mcp_server/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  search-agent:
+    build:
+      context: ./backend
+      dockerfile: search_agent/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      SEARCH_AGENT_HOST: "0.0.0.0"
+      SEARCH_AGENT_PORT: "8002"
+      MCP_SERVER_URL: "http://mcp-server:8001/sse"
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  planner-agent:
+    build:
+      context: ./backend
+      dockerfile: planner_agent/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      PLANNER_HOST: "0.0.0.0"
+      PLANNER_PORT: "8000"
+      SEARCH_AGENT_URL: "http://search-agent:8002"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    depends_on:
+      search-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_AGENT_URL: "/api/agent"
+      PLANNER_URL: "http://planner-agent:8000/agent"
+    depends_on:
+      planner-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
